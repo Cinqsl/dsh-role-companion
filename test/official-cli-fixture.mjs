@@ -18,7 +18,8 @@ export async function bootOfficialCliFixture(run,transport,{execArgs=[],cliArgum
  if(!reuse)initProfile(profile,['@deepseek-ai/dsh-base','@deepseek-ai/dsh-web-app','dsh-role-companion']);
  if(installPackage){
   const manifest=JSON.parse(await readFile(join(profile,'package.json'),'utf8'));manifest.dependencies['@deepseek-ai/dsh']='0.2.1-rc.3';await writeFile(join(profile,'package.json'),JSON.stringify(manifest,null,2)+'\n');
-  execFileSync('npm',['install',installPackage,'--offline','--ignore-scripts','--no-audit','--no-fund','--cache','/private/tmp/dsh-merge-npm-cache'],{cwd:profile,stdio:'inherit',env:{PATH:process.env.PATH,HOME:join(run,'home'),NPM_CONFIG_USERCONFIG:'/dev/null'}});
+  const npmCache=process.env.npm_config_cache||execFileSync('npm',['config','get','cache'],{encoding:'utf8'}).trim();
+  execFileSync('npm',['install',installPackage,'--prefer-offline','--ignore-scripts','--no-audit','--no-fund','--cache',npmCache],{cwd:profile,stdio:'inherit',env:{PATH:process.env.PATH,HOME:join(run,'home'),NPM_CONFIG_USERCONFIG:'/dev/null'}});
  }else if(!reuse)await stageFixturePackage(profile);
  if(!reuse){
  await writeFile(join(profile,'cordis.patch.yml'),JSON.stringify([{id:'llm-deepseek',config:{baseURL:'https://api.deepseek.com/anthropic',apiKeyEnv:'ROLE_FIXTURE_KEY',thinking:'disabled',maxTokens:4096,models:[{id:'deepseek-flash',name:'Controlled official route',contextWindow:1048576,maxTokens:4096,inputModalities:['text']}],retryPolicy:{mode:'normal',maxRetries:0}}},...(bootstrap&&bootstrapFromDocument?[{id:'role-companion',config:{bootstrap}}]:[]),...additionalPatches,{id:'session-title-llm',disabled:true},{id:'web-runtime',config:{openBrowser:false,printUrl:true,surfaceContext:false}}]));}
