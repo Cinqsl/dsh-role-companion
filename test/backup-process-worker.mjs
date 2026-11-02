@@ -1,0 +1,10 @@
+import {openRoleHome,openRoleHomeForRuntime,verifyRoleBackup,readBackupMaintenance} from 'dsh-role-companion/home';
+import {startRole} from 'dsh-role-companion/runtime';
+const [mode,path,roleId,operationId,destination]=process.argv.slice(2);
+let home,role;try{
+ if(mode==='open'){home=await openRoleHome(path,{expectedRoleId:roleId});console.log(JSON.stringify({kind:'opened',snapshot:await home.readSnapshot()}));await home.close();home=undefined;}
+ else if(mode==='verify')console.log(JSON.stringify(await verifyRoleBackup(path,{expectedRoleId:roleId,operationId})));
+ else if(mode==='maintenance')console.log(JSON.stringify(await readBackupMaintenance(path,{expectedRoleId:roleId,operationId})));
+ else if(mode==='resume'){home=await openRoleHomeForRuntime(path,{expectedRoleId:roleId});role=await startRole(home,{});const before=await role.owner.readBackup(operationId);let blockedEdit=null;if(before.sourceRevision===undefined){const view=await role.runtime.inspect();blockedEdit=await role.owner.apply({kind:'edit-core',operationId:'maintenance-must-reject54',text:'不应在维护待核对时修改核心',expectedCoreVersion:view.home.core.version,expectedRevision:view.home.revision});}await role.owner.resumeBackup({operationId,destination});const end=Date.now()+10000;let result;while(Date.now()<end){result=await role.owner.readBackup(operationId);if(result.phase==='verified-restorable'||result.phase==='failed')break;await new Promise(r=>setTimeout(r,10));}console.log(JSON.stringify({before,blockedEdit,result,view:await role.runtime.inspect(),actualModels:0,actualTools:0}));if(result.phase!=='verified-restorable')process.exitCode=2;role.lifetime.requestStop('unload');await role.lifetime.stopped;role=undefined;home=undefined;}
+ else throw Error('unknown fixture mode');
+}catch(error){console.log(JSON.stringify({kind:'rejected',code:error.code??error.name,message:error.message}));process.exitCode=2;}finally{if(role){role.lifetime.requestStop('unload');await role.lifetime.stopped;}else if(home)await home.close();}

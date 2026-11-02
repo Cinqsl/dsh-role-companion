@@ -1,0 +1,37 @@
+import assert from 'node:assert/strict';
+import {join} from 'node:path';
+import {readFile,writeFile,access,realpath} from 'node:fs/promises';
+import {writeFileSync} from 'node:fs';
+import {bootNativeFixture,response,waitFor} from './native-fixture.mjs';
+const run=await realpath(process.env.DSH_TEST_RUN),phase=process.argv[2],homePath=join(run,'role'),destination=join(run,'portable-copy'),events=[],event=(kind,data={})=>events.push({index:events.length,kind,...data});
+const held=Promise.withResolvers(),entered=Promise.withResolvers();let sessionId,flushEntries=0,hostStopped=false,roleStopped=false,failure;
+const result={case:'38-54-qq-backup-interlock-'+phase,status:'running',phase,events,productComposition:{qq:'1416e02',backup:'467222e'},realBusinessCalls:{model:0,web:0,qq:0}};
+const {ctx,module,entries,metadataEntries,shutdown}=await bootNativeFixture(run,entry=>{event('actual-model-entry',{ordinal:entry.ordinal});return response('必要flush完成后保留的完整合成回复');},{globalCompaction:false,reuse:phase==='fresh'});
+const {Peer}=await module('@deepseek-ai/dsh-client-connection'),owner=new Peer(ctx,{principal:{kind:'owner'}}),invoke=(method,args={})=>ctx.typertGateway.invoke({peer:owner,namespace:'roleCompanion',method,args});
+ctx.on('agent/status',({agent,status})=>{if(agent.id.startsWith('dsh-role-companion-')&&status==='idle')sessionId=agent.id;});
+ctx.on('session/flush',async session=>{if(session.id!==sessionId)return;flushEntries++;event('actual-required-flush-enter',{sessionId:session.id,ordinal:flushEntries});entered.resolve();await held.promise;event('actual-required-flush-return',{sessionId:session.id,ordinal:flushEntries});});
+try{
+ let roleId;if(phase==='first'){const created=await invoke('createHome',{path:homePath,request:{operationId:'qq-backup-create',core:'备份和QQ配置只复用同一Home停止权威',settings:{inputLimitBytes:32768}},expectedProfileVersion:0});assert.equal(created.registration,'registered');roleId=created.roleId;}else{roleId=JSON.parse(await readFile(join(run,'qq-backup-marker.json'),'utf8')).roleId;await waitFor(async()=>(await invoke('inspect')).role.reason!=='STOP_RECOVERY_PENDING');}
+ result.roleId=roleId;const guard={expectedRoleId:roleId,expectedBindingVersion:1},received=await invoke('submitInput',{request:{operationId:'qq-backup-panel-'+phase,clientRequestId:'qq-backup-key-'+phase,text:'等待必要flush期间发起配置和备份 '+phase,...guard}});assert.equal(received.kind,'accepted');result.inputReceipt=received;await entered.promise;assert.equal(entries.length,1);
+ const editing=invoke('editQQConnection',{expectedRoleId:roleId,expectedQQBindingVersion:0,request:{operationId:'qq-backup-config-'+phase,expectedProfileVersion:0,value:{enabled:false,endpoint:'',credentialRef:'',maxFrameBytes:512,readTimeoutMs:80,reconnectInitialMs:10,reconnectMaxMs:20,jitterRatio:0.5}}}).then(value=>({value}),error=>({error:{code:error.code,reason:error.details?.reason??null}}));
+ const stopping=await waitFor(async()=>{const view=(await invoke('inspect')).role;return view.status==='stopping'&&view.stop?view:undefined;});result.stopping=stopping;await access(join(homePath,'writer.lock'));event('own-qq-config-waits-original-flush');
+ const request={operationId:'qq-backup-shared-operation',destination},receipt=await invoke('requestBackup',{expectedRoleId:roleId,request});result.backupReceipt=receipt;
+ if(phase==='first'){
+  assert.equal(receipt.checkpoint,'requested');assert.equal(receipt.stopOperationId,stopping.stop.operationId);assert.notEqual(receipt.phase,'verified-restorable');event('new-maintenance-cancels-qq-reopen',{operationId:receipt.operationId,stopOperationId:receipt.stopOperationId});
+  const {openRoleHome}=await module('dsh-role-companion/home');await assert.rejects(openRoleHome(homePath),error=>['HOME_BUSY','MAINTENANCE_PENDING'].includes(error.code));
+ }else{
+  assert.equal(receipt.checkpoint,'verified');assert.equal(receipt.phase,'verified-restorable');assert.equal((await invoke('readBackup',{expectedRoleId:roleId,operationId:request.operationId})).checkpoint,'verified');assert.equal((await invoke('verifyBackup',{expectedRoleId:roleId,operationId:request.operationId})).checkpoint,'verified');event('verified-old-backup-retry-and-reads-grant-no-new-stop');
+ }
+ held.resolve();event('original-flush-released');const edited=await editing;result.editResult=edited;
+ if(phase==='first'){
+  assert.equal(edited.error.reason,'QQ_RESTART_CANCELLED');const backup=await waitFor(async()=>{const view=await invoke('readBackup',{expectedRoleId:roleId,operationId:request.operationId});return view.phase==='verified-restorable'?view:undefined;});result.backup=backup;assert.equal(backup.checkpoint,'verified');const view=(await invoke('inspect')).role;assert.equal(view.status,'stopped');assert.equal(view.stop.operationId,stopping.stop.operationId);result.final=view;roleStopped=true;
+  const saved=await invoke('readQQ',{expectedRoleId:roleId,expectedQQBindingVersion:0});assert.equal(saved.profileVersion,0);assert.equal(saved.lastOperationId,'');result.saved=saved;await writeFile(join(run,'qq-backup-marker.json'),JSON.stringify({roleId,backup})+'\n');
+ }else{
+  assert.equal(edited.value.profileVersion,1);assert.equal(edited.value.lastOperationId,'qq-backup-config-fresh');result.saved=edited.value;const view=(await invoke('inspect')).role;assert.notEqual(view.status,'stopped');assert.equal(view.backups.filter(value=>value.checkpoint!=='verified').length,0);event('qq-own-operation-reopened-after-old-backup-retry');
+  await invoke('stopRole',{...guard,request:{operationId:'qq-backup-final-stop'}});await waitFor(async()=>(await invoke('readStopOperation',{...guard,operationId:'qq-backup-final-stop'})).stop?.phase==='stopped');roleStopped=true;
+ }
+ assert.equal(entries.length,1);assert.equal(metadataEntries.length,0);assert.equal(flushEntries,1);await assert.rejects(access(join(homePath,'writer.lock')),error=>error.code==='ENOENT');
+ const {openRoleHome}=await module('dsh-role-companion/home'),reopened=await openRoleHome(homePath),state=await reopened.readConversation();assert.equal(state.turns.length,phase==='first'?1:2);assert.equal(state.replies.length,phase==='first'?1:2);assert.equal(state.attempts.at(-1).outcome.data.request.sessionId,sessionId);assert(state.turns.every(turn=>turn.status==='finished'));result.home={revision:state.revision,runIds:state.turns.map(turn=>turn.runId),attemptIds:state.attempts.map(value=>value.attemptId),replyIds:state.replies.map(value=>value.replyId),sessionId};await reopened.close();await shutdown.shutdown(0);hostStopped=true;Object.assign(result,{status:'passed',actualModels:entries.length,actualMetadata:metadataEntries.length,flushEntries,roleStopped,hostStopped,lockReleased:true,publicReopen:true});
+}catch(error){failure=error;Object.assign(result,{status:'failed',error:{code:error.code??null,reason:error.details?.reason??null,message:error.message,stack:error.stack},actualModels:entries.length,actualMetadata:metadataEntries.length,flushEntries,roleStopped,hostStopped});}
+finally{held.resolve();const timer=setTimeout(()=>{writeFileSync(join(run,'qq-backup-interlock-'+phase+'.json'),JSON.stringify({...result,cleanup:'bounded-failure-not-stopped'},null,2)+'\n');process.exit(2);},8000);try{if(!hostStopped){await shutdown.shutdown(0);hostStopped=true;}result.hostStopped=hostStopped;await writeFile(join(run,'qq-backup-interlock-'+phase+'.json'),JSON.stringify(result,null,2)+'\n');}finally{clearTimeout(timer);}}
+if(failure){console.error('QQ/backup interlock failed',phase,failure);process.exitCode=2;}

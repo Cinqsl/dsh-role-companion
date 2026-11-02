@@ -1,0 +1,12 @@
+- insert:
+    - id: role-companion-preset
+      name: "@deepseek-ai/dsh-agent-preset"
+      config:
+        id: dsh-role-companion-work-v1
+        name: DSH 角色伙伴工作会话
+        description: 只承载角色伙伴运行时的最小 Agent 能力组合。
+        order: 10000
+        plugins: []
+    - id: role-companion
+      name: dsh-role-companion
+      config: {}

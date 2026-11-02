@@ -1,0 +1,17 @@
+import './network-guard.mjs';
+import test from 'node:test';import assert from 'node:assert/strict';import {mkdtemp,rm} from 'node:fs/promises';import {join} from 'node:path';import {tmpdir} from 'node:os';
+import {createRoleHome} from 'dsh-role-companion/home';import {startRole} from 'dsh-role-companion/runtime';
+const wait=async p=>{for(let n=0;n<300;n++){const v=await p();if(v)return v;await new Promise(r=>setTimeout(r,10));}throw Error('Runtime result did not settle');};
+test('同一 runtime 接纳后执行并只向 owner 提供全文，模型结果不进入状态投影',async t=>{
+const root=await mkdtemp(join(tmpdir(),'role-conversation-'));t.after(()=>rm(root,{recursive:true,force:true}));const home=await createRoleHome(join(root,'home'),{operationId:'create',core:'合成角色星河',settings:{inputLimitBytes:32768}});let entered=0;
+const role=await startRole(home,{execution:{inspect:async()=>({available:true,reason:'ready'}),prepare:async()=>({provider:'deepseek-official',model:'deepseek-flash',contextWindow:1000000,outputLimit:4096}),run:async(plan,scope)=>{assert.equal(plan.frame.core,'合成角色星河');assert.equal(plan.frame.inputs[0].text,'原始问题');const attempt=await scope.reserveModel({messages:plan.frame.inputs});await attempt.enter();for await(const value of attempt.iterate(async function*(){entered++;yield '完整回答';})){assert.equal(value,'完整回答');}await attempt.settle({kind:'completed',data:{usage:{inputTokens:1.25},text:'完整回答'}});return {kind:'reply',text:'完整回答'};},quiesce:async()=>({idle:true,flushed:true}),close:async()=>{}}});
+assert.equal((await role.runtime.inspect()).status,'ready');const binding=(await role.runtime.inspect()).home.panelBinding;
+await role.runtime.receive({operationId:'input',externalKey:'key',text:'原始问题',...binding,origin:'live',receivedAt:new Date().toISOString(),sourceEvidence:'authenticated-owner-panel'});
+await wait(async()=>(await role.runtime.inspect()).home.inputSummary.resolved===1);assert.equal(entered,1);const c=await role.owner.readConversation();assert.equal(c.replies.length,1);assert.equal((await role.owner.readReply({replyId:c.replies[0].replyId,offset:0,limit:100})).text,'完整回答');assert.equal(JSON.stringify(await role.runtime.inspect()).includes('完整回答'),false);
+role.lifetime.requestStop('unload');await role.lifetime.stopped;
+});
+for(const contextWindow of [0,NaN,100])test('相同 runtime 在未知或不足的路由容量 '+String(contextWindow)+' 下不调用执行',async t=>{
+ const root=await mkdtemp(join(tmpdir(),'role-context-capacity-'));t.after(()=>rm(root,{recursive:true,force:true}));const home=await createRoleHome(join(root,'home'),{operationId:'create',core:'完整必要核心',settings:{inputLimitBytes:32768}});let entered=0;
+ const role=await startRole(home,{execution:{inspect:async()=>({available:true,reason:'ready'}),prepare:async()=>({provider:'deepseek-official',model:'deepseek-flash',contextWindow,outputLimit:4096}),run:async()=>{entered++;throw Error('must not run');},quiesce:async()=>({idle:true,flushed:true}),close:async()=>{}}});
+ const binding=(await role.runtime.inspect()).home.panelBinding;await role.runtime.receive({operationId:'input',externalKey:'key',text:'不可静默截断的完整输入',...binding,origin:'live',receivedAt:new Date().toISOString(),sourceEvidence:'authenticated-owner-panel'});await wait(async()=>(await role.runtime.inspect()).home.inputSummary.resolved===1);const state=await role.owner.readConversation();assert.equal(entered,0);assert.equal(state.attempts.length,0);assert.equal(state.turns[0].outcome.reason,'CONTEXT_CAPACITY');role.lifetime.requestStop('unload');await role.lifetime.stopped;
+});

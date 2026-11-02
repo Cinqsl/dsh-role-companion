@@ -1,0 +1,27 @@
+import assert from 'node:assert/strict';
+import {mkdir,writeFile,readFile,access} from 'node:fs/promises';
+import {writeFileSync} from 'node:fs';
+import {join} from 'node:path';
+import {bootNativeFixture,response,waitFor} from './native-fixture.mjs';
+const run=process.env.DSH_TEST_RUN,phase=process.argv[2],events=[],event=(kind,data={})=>events.push({index:events.length,kind,...data});
+const {ctx,module,entries,metadataEntries,shutdown}=await bootNativeFixture(run,()=>{throw Error('No model generation is authorized in QQ config overlay case');},{globalCompaction:false,reuse:phase!=='seed'});
+const {Peer}=await module('@deepseek-ai/dsh-client-connection'),owner=new Peer(ctx,{principal:{kind:'owner'}}),invoke=(method,args={})=>ctx.typertGateway.invoke({peer:owner,namespace:'roleCompanion',method,args});
+let hostStopped=false,roleStopped=false,failure;const result={case:'38-qq-profile-overlay-'+phase,status:'running',phase,events,realBusinessCalls:{model:0,web:0,qq:0}};
+try{
+ let roleId;
+ if(phase==='seed'){
+  const created=await invoke('createHome',{path:join(run,'role'),request:{operationId:'qq-overlay-create',core:'合成配置overlay不能隐性覆盖',settings:{inputLimitBytes:32768}},expectedProfileVersion:0});assert.equal(created.registration,'registered');roleId=created.roleId;const initial=await invoke('inspect'),qq=await invoke('readQQ',{expectedRoleId:roleId,expectedQQBindingVersion:0});await invoke('stopRole',{expectedRoleId:roleId,expectedBindingVersion:1,request:{operationId:'qq-overlay-seed-stop'}});await waitFor(async()=>(await invoke('readStopOperation',{expectedRoleId:roleId,expectedBindingVersion:1,operationId:'qq-overlay-seed-stop'})).stop?.phase==='stopped');roleStopped=true;await writeFile(join(run,'qq-overlay-marker.json'),JSON.stringify({roleId,bootstrap:initial.bootstrap,qq:{...qq.value,version:qq.profileVersion,lastOperationId:qq.lastOperationId}})+'\n');
+ }else if(phase==='first'){
+  const marker=JSON.parse(await readFile(join(run,'qq-overlay-marker.json'),'utf8'));roleId=marker.roleId;await waitFor(async()=>(await invoke('inspect')).role.reason!=='STOP_RECOVERY_PENDING');const before=await invoke('readQQ',{expectedRoleId:roleId,expectedQQBindingVersion:0});assert.equal(before.value.maxFrameBytes,768);result.before=before;
+  const request={operationId:'qq-overlay-edit',expectedProfileVersion:0,value:{enabled:false,endpoint:'',credentialRef:'',maxFrameBytes:512,readTimeoutMs:80,reconnectInitialMs:10,reconnectMaxMs:20,jitterRatio:0.5}};
+  await assert.rejects(invoke('editQQConnection',{expectedRoleId:roleId,expectedQQBindingVersion:0,request}),error=>{result.rejection={code:error.code,reason:error.details?.reason};return error.details?.reason==='PROFILE_OVERLAY_CONFLICT';});event('official-editor-rejected-overlay');await waitFor(async()=>(await invoke('inspect')).role.status==='stopped');roleStopped=true;
+  const saved=await invoke('readQQ',{expectedRoleId:roleId,expectedQQBindingVersion:0});assert.equal(saved.value.maxFrameBytes,768);assert.equal(saved.profileVersion,0);assert.equal(saved.lastOperationId,'');result.after=saved;await assert.rejects(access(join(run,'role/writer.lock')),error=>error.code==='ENOENT');
+  await writeFile(join(run,'qq-overlay-marker.json'),JSON.stringify({roleId,before})+'\n');
+ }else{
+  const marker=JSON.parse(await readFile(join(run,'qq-overlay-marker.json'),'utf8'));roleId=marker.roleId;await waitFor(async()=>(await invoke('inspect')).role.reason!=='STOP_RECOVERY_PENDING');const saved=await invoke('readQQ',{expectedRoleId:roleId,expectedQQBindingVersion:0});assert.equal(saved.value.maxFrameBytes,768);assert.equal(saved.profileVersion,0);assert.equal(saved.lastOperationId,'');assert.equal(saved.binding,null);result.restored=saved;
+  await invoke('stopRole',{expectedRoleId:roleId,expectedBindingVersion:1,request:{operationId:'qq-overlay-fresh-stop'}});await waitFor(async()=>(await invoke('readStopOperation',{expectedRoleId:roleId,expectedBindingVersion:1,operationId:'qq-overlay-fresh-stop'})).stop?.phase==='stopped');roleStopped=true;await assert.rejects(access(join(run,'role/writer.lock')),error=>error.code==='ENOENT');
+ }
+ assert.equal(entries.length,0);assert.equal(metadataEntries.length,0);await shutdown.shutdown(0);hostStopped=true;if(phase==='seed'){const marker=JSON.parse(await readFile(join(run,'qq-overlay-marker.json'),'utf8'));await writeFile(join(run,'home/cordis.patch.yml'),JSON.stringify([{id:'role-companion',config:{bootstrap:marker.bootstrap,qq:{...marker.qq,maxFrameBytes:768}}}])+'\n');}Object.assign(result,{status:'passed',roleId,roleStopped,hostStopped,actualModels:entries.length,actualMetadata:metadataEntries.length,lockReleased:true});
+}catch(error){failure=error;Object.assign(result,{status:'failed',error:{message:error.message,code:error.code??null,reason:error.details?.reason??null,stack:error.stack},roleStopped,hostStopped,actualModels:entries.length});}
+finally{const timer=setTimeout(()=>{writeFileSync(join(run,'qq-profile-fault-result-'+phase+'.json'),JSON.stringify({...result,cleanup:'bounded-failure-not-stopped'},null,2)+'\n');process.exit(2);},8000);try{if(!hostStopped){await shutdown.shutdown(0);hostStopped=true;}result.hostStopped=hostStopped;await writeFile(join(run,'qq-profile-fault-result-'+phase+'.json'),JSON.stringify(result,null,2)+'\n');}finally{clearTimeout(timer);}}
+if(failure){console.error('QQ profile overlay failed',phase,failure);process.exitCode=2;}

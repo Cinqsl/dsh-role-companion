@@ -1,0 +1,1 @@
+{"extends":"../packages/companion/tsconfig.json","include":["contracts.types.ts"],"exclude":[]}

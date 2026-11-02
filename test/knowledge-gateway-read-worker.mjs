@@ -1,0 +1,2 @@
+import {openRoleHome} from 'dsh-role-companion/home';import {access} from 'node:fs/promises';import {join} from 'node:path';
+const[path,roleId]=process.argv.slice(2),home=await openRoleHome(path,{expectedRoleId:roleId});let knowledge;try{knowledge=await home.readKnowledge();}finally{await home.close();}for(const name of ['writer.lock','.maintenance.lock'])await access(join(path,name)).then(()=>{throw Error('lock retained');},error=>{if(error.code!=='ENOENT')throw error;});console.log(JSON.stringify({knowledge,runtimeStarted:false,modelOrHttpEntries:0,locksReleased:true}));

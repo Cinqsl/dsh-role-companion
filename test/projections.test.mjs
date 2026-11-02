@@ -1,0 +1,64 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtemp,rm,writeFile,readFile} from 'node:fs/promises';
+import {join} from 'node:path';
+import {tmpdir} from 'node:os';
+import {createRoleHome} from 'dsh-role-companion/home';
+import {startRole} from 'dsh-role-companion/runtime';
+const request={operationId:'projection-create',core:'合成角色：星河',settings:{inputLimitBytes:32768}};
+async function fixture(t,io){const root=await mkdtemp(join(tmpdir(),'role-projection-'));const path=join(root,'home');const role=await startRole(await createRoleHome(path,request,io),{});t.after(async()=>{role.lifetime.requestStop('unload');await role.lifetime.stopped;await rm(root,{recursive:true,force:true});});return {path,role};}
+test('同一角色打开后手改可读投影，owner 即时预览差异且读取不改写文件',async t=>{
+ const {path,role}=await fixture(t);const file=join(path,'views/settings.json');const edited='这是一份尚未导入的手工笔记\n';await writeFile(file,edited);
+ const preview=await role.owner.previewProjection('settings');assert.equal(preview.state,'diff');assert.equal(preview.actualText,edited);assert.equal(preview.roleId,(await role.runtime.inspect()).roleId);assert.equal(preview.revision,1);assert.equal(preview.importable,false);assert.equal(preview.reason,'INVALID_PROJECTION');assert.match(preview.actualDigest,/^[a-f0-9]{64}$/);assert.equal(await readFile(file,'utf8'),edited);
+});
+test('owner 显式导入核心与设置为同一提交，原操作重试不增加版本且冲突拒绝',async t=>{
+ const {path,role}=await fixture(t);const file=join(path,'views/settings.json');const edited=JSON.parse(await readFile(file,'utf8'));edited.core.text='导入的核心';edited.settings.value.inputLimitBytes=7;await writeFile(file,JSON.stringify(edited,null,2)+'\n');
+ const preview=await role.owner.previewProjection('settings');assert.deepEqual(preview.changes,['core','settings']);assert.equal(preview.importable,true);
+ const command={kind:'import-projection',operationId:'import-both',projectionId:'settings',observedDigest:preview.actualDigest,expectedRevision:preview.revision,expectedCoreVersion:preview.coreVersion,expectedSettingsVersion:preview.settingsVersion};
+ await assert.rejects(role.owner.apply({...command,expectedRevision:9}),{code:'REVISION_CONFLICT'});
+ const result=await role.owner.apply(command);assert.equal(result.committedRevision,2);assert.equal(result.projectionOperation.state,'complete');
+ const current=(await role.runtime.inspect()).home;assert.equal(current.core.text,'导入的核心');assert.equal(current.core.version,2);assert.equal(current.settings.value.inputLimitBytes,7);assert.equal(current.settings.version,2);assert.equal(current.contextGeneration,2);
+ assert.equal((await role.owner.apply({...command,expectedRevision:99})).committedRevision,2);assert.equal((await role.runtime.inspect()).revision,2);await assert.rejects(role.owner.apply({...command,observedDigest:'a'.repeat(64)}),{code:'OPERATION_CONFLICT'});
+});
+test('重建保留手改原文，写入故障只留下已提交意图，重试完成且不新增核心版本',async t=>{
+ let fail=true;const events=[];const {path,role}=await fixture(t,{barrier:async(stage,detail)=>{events.push({stage,...detail});if(stage==='before-projection-replace'&&detail.operationId==='rebuild-fault'&&fail){fail=false;throw Error('synthetic projection failure');}}});
+ const file=join(path,'views/settings.json');await writeFile(file,'保留这份手工笔记\n');const preview=await role.owner.previewProjection('settings');const command={kind:'rebuild-projection',operationId:'rebuild-fault',projectionId:'settings',observedDigest:preview.actualDigest,expectedRevision:1,expectedCoreVersion:1,expectedSettingsVersion:1};
+ const pending=await role.owner.apply(command);assert.equal(pending.committedRevision,2);assert.equal(pending.projectionOperation.state,'pending');assert.equal((await role.owner.readOperation(command.operationId)).projectionOperation.state,'pending');assert.equal(await readFile(file,'utf8'),'保留这份手工笔记\n');
+ const done=await role.owner.apply(command);assert.equal(done.projectionOperation.state,'complete');assert.equal(done.committedRevision,2);assert.equal((await role.runtime.inspect()).home.core.version,1);
+ const material=await role.owner.readPreservedProjection(command.operationId);assert.equal(Buffer.from(material.bytesBase64,'base64').toString(),'保留这份手工笔记\n');assert.equal(events.filter(x=>x.stage==='before-commit-publish'&&x.operationId===command.operationId).length,1);
+});
+test('重建提交后到替换前出现较新手改时保留新字节，原操作报告摘要冲突',async t=>{
+ let file;const {path,role}=await fixture(t,{barrier:async(stage,detail)=>{if(stage==='before-projection-replace'&&detail.operationId==='rebuild-race')await writeFile(file,'较新的手工笔记\n');}});file=join(path,'views/settings.json');await writeFile(file,'旧手改\n');const preview=await role.owner.previewProjection('settings');const command={kind:'rebuild-projection',operationId:'rebuild-race',projectionId:'settings',observedDigest:preview.actualDigest,expectedRevision:1,expectedCoreVersion:1,expectedSettingsVersion:1};
+ const result=await role.owner.apply(command);assert.equal(result.projectionOperation.state,'blocked');assert.equal(result.projectionOperation.reason,'PROJECTION_DIGEST_CONFLICT');assert.equal(await readFile(file,'utf8'),'较新的手工笔记\n');assert.equal((await role.owner.apply(command)).committedRevision,2);
+});
+test('损坏正文通过同一 startRole 提供只读诊断，拒绝写入并保留原文件',async t=>{
+ const {openRoleHomeForRuntime}=await import('dsh-role-companion/home');const {readdir,unlink}=await import('node:fs/promises');const root=await mkdtemp(join(tmpdir(),'role-diagnostic-'));const path=join(root,'home');const home=await createRoleHome(path,request);const identity=home.roleId;await home.close();
+ const commit=JSON.parse(await readFile(join(path,'commits/000000000001.json'),'utf8'));await unlink(join(path,'blobs',commit.data.core+'.json'));const before=await readFile(join(path,'commits/000000000001.json'),'utf8');
+ const role=await startRole(await openRoleHomeForRuntime(path,{expectedRoleId:identity}),{});const view=await role.runtime.inspect();assert.equal(view.status,'read-only');assert.equal(view.roleId,null);assert.equal(view.diagnostic.claimedRoleId,identity);assert.equal(view.diagnostic.verifiedRoleId,null);assert.equal(view.diagnostic.reason,'MISSING_CONTENT');
+ assert.equal((await role.owner.readDiagnostic()).mode,'read-only');assert.equal((await role.owner.apply({kind:'edit-core',operationId:'forbidden',text:'不应写入',expectedRevision:1,expectedCoreVersion:1})).kind,'unavailable');assert.equal((await role.owner.readOperation('projection-create')).kind,'unavailable');assert.equal(await readFile(join(path,'commits/000000000001.json'),'utf8'),before);assert.equal((await readdir(join(path,'commits'))).length,1);
+ role.lifetime.requestStop('unload');await role.lifetime.stopped;await rm(root,{recursive:true,force:true});
+});
+test('既有 1 MiB 核心规则的最坏 JSON 编码仍可导入并完整保留原投影',async t=>{
+ const {path,role}=await fixture(t);const file=join(path,'views/settings.json');const edited=JSON.parse(await readFile(file,'utf8'));edited.core.text='\u0001'.repeat(1048576);const bytes=JSON.stringify(edited);await writeFile(file,bytes);
+ const preview=await role.owner.previewProjection('settings');assert.equal(preview.importable,true);const result=await role.owner.apply({kind:'import-projection',operationId:'expanded-import',projectionId:'settings',observedDigest:preview.actualDigest,expectedRevision:1,expectedCoreVersion:1,expectedSettingsVersion:1});assert.equal(result.projectionOperation.state,'complete');assert.equal((await role.runtime.inspect()).home.core.text.length,1048576);const preserved=await role.owner.readPreservedProjection('expanded-import');assert.equal(Buffer.from(preserved.bytesBase64,'base64').toString(),bytes);
+});
+test('未知字段、重复键和权威元数据编辑明确拒绝；预览后新字节不被旧摘要覆盖',async t=>{
+ const {path,role}=await fixture(t);const file=join(path,'views/settings.json');const original=JSON.parse(await readFile(file,'utf8'));
+ for(const edited of [{...original,roleId:'forged'}, {...original,revision:9}, {...original,core:{text:'新核心',version:9}}]){await writeFile(file,JSON.stringify(edited));const p=await role.owner.previewProjection('settings');assert.equal(p.importable,false);await assert.rejects(role.owner.apply({kind:'import-projection',operationId:'invalid-'+Math.random().toString(16).slice(2),projectionId:'settings',observedDigest:p.actualDigest,expectedRevision:1,expectedCoreVersion:1,expectedSettingsVersion:1}));assert.equal((await role.runtime.inspect()).revision,1);}
+ await writeFile(file,'{"revision":1,"revision":1,"core":{"text":"新核心","version":1},"settings":{"value":{"inputLimitBytes":32768},"version":1}}');assert.equal((await role.owner.previewProjection('settings')).importable,false);
+ const p=await role.owner.previewProjection('settings');await writeFile(file,'更新的手改');await assert.rejects(role.owner.apply({kind:'rebuild-projection',operationId:'old-digest',projectionId:'settings',observedDigest:p.actualDigest,expectedRevision:1,expectedCoreVersion:1,expectedSettingsVersion:1}),{code:'PROJECTION_DIGEST_CONFLICT'});assert.equal((await role.runtime.inspect()).revision,1);assert.equal(await readFile(file,'utf8'),'更新的手改');
+});
+test('非 UTF-8 投影不替换解码，显式重建保留完全相同的原始字节',async t=>{
+ const {path,role}=await fixture(t);const file=join(path,'views/settings.json');const bytes=Buffer.from([0xff,0xfe,0x00,0x41]);await writeFile(file,bytes);const p=await role.owner.previewProjection('settings');assert.equal(p.actualText,null);assert.equal(p.reason,'INVALID_UTF8');assert.equal(p.importable,false);const result=await role.owner.apply({kind:'rebuild-projection',operationId:'binary-rebuild',projectionId:'settings',observedDigest:p.actualDigest,expectedRevision:1,expectedCoreVersion:1,expectedSettingsVersion:1});assert.equal(result.projectionOperation.state,'complete');assert.deepEqual(Buffer.from((await role.owner.readPreservedProjection('binary-rebuild')).bytesBase64,'base64'),bytes);
+});
+test('历史模板上的手改可在当前 Home 重新预览后显式导入，旧预览仍先冲突',async t=>{
+ const {path,role}=await fixture(t);const file=join(path,'views/settings.json');const edited=JSON.parse(await readFile(file,'utf8'));edited.core.text='保留的手改核心';await writeFile(file,JSON.stringify(edited));const old=await role.owner.previewProjection('settings');
+ await role.owner.apply({kind:'edit-core',operationId:'new-authority',text:'较新的权威核心',expectedRevision:1,expectedCoreVersion:1});const command={kind:'import-projection',operationId:'historical-import',projectionId:'settings',observedDigest:old.actualDigest,expectedRevision:1,expectedCoreVersion:1,expectedSettingsVersion:1};await assert.rejects(role.owner.apply(command),{code:'REVISION_CONFLICT'});
+ const current=await role.owner.previewProjection('settings');assert.equal(current.importable,true);assert.deepEqual(current.sourceTemplate,{revision:1,coreVersion:1,settingsVersion:1});assert.equal(current.revision,2);const result=await role.owner.apply({...command,expectedRevision:current.revision,expectedCoreVersion:current.coreVersion});assert.equal(result.committedRevision,3);assert.equal((await role.runtime.inspect()).home.core.text,'保留的手改核心');assert.equal((await role.runtime.inspect()).home.core.version,3);
+});
+test('越界投影明确不可用，重建在发布意图前拒绝且不覆盖原文件',async t=>{
+ const {path,role}=await fixture(t);const file=join(path,'views/settings.json');const bytes=Buffer.alloc(8388609,0x41);await writeFile(file,bytes);const p=await role.owner.previewProjection('settings');assert.equal(p.state,'unavailable');assert.equal(p.reason,'UNSAFE_PROJECTION');await assert.rejects(role.owner.apply({kind:'rebuild-projection',operationId:'overbound',projectionId:'settings',observedDigest:null,expectedRevision:1,expectedCoreVersion:1,expectedSettingsVersion:1}),{code:'UNSAFE_PROJECTION'});assert.equal((await role.owner.readOperation('overbound')).kind,'not-found');assert.equal((await role.runtime.inspect()).revision,1);assert.deepEqual(await readFile(file),bytes);
+});
+test('只读诊断不沿受管目录符号链接读取外部资料或泄漏外部文件名',async t=>{
+ const {mkdir,rename,symlink}=await import('node:fs/promises');const {openRoleHomeForRuntime}=await import('dsh-role-companion/home');const root=await mkdtemp(join(tmpdir(),'projection-safe-diagnostic-'));const path=join(root,'home');const home=await createRoleHome(path,request);await home.close();const foreign=join(root,'foreign');await mkdir(foreign);await writeFile(join(foreign,'synthetic-private-marker.json'),'合成外部资料');await rename(join(path,'blobs'),join(path,'.retained-blobs'));await symlink(foreign,join(path,'blobs'),'dir');const role=await startRole(await openRoleHomeForRuntime(path),{});t.after(async()=>{role.lifetime.requestStop('unload');await role.lifetime.stopped;await rm(root,{recursive:true,force:true});});const report=await role.owner.readDiagnostic();assert.equal(report.mode,'read-only');assert.equal(report.reason,'UNSAFE_PATH');assert.equal(report.evidence.some(item=>item.file.includes('synthetic-private-marker')),false);assert.equal(await readFile(join(foreign,'synthetic-private-marker.json'),'utf8'),'合成外部资料');
+});

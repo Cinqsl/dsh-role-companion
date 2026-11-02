@@ -1,0 +1,14 @@
+{
+  "roleId": "role-00000000-0000-4000-8000-000000000000",
+  "operationId": "golden-create",
+  "core": "角色\n",
+  "commitSha256": "4b886cdd5b4f9f2526a10624e3a99ff381aa611d73a595992a77d24a43e7dfe2",
+  "headSha256": "67474eb490ce11de4fad72f44d0701e7ca7e351f18b9e7a11768c7c99672bbc0",
+  "files": {
+    "identity.json": "{\"creationFingerprint\":\"fc15b4cc5a066eb58660fa796b14225d940af0359241bda10bc9ebb46b8b380c\",\"creationOperationId\":\"golden-create\",\"formatMajor\":1,\"formatMinor\":0,\"roleId\":\"role-00000000-0000-4000-8000-000000000000\"}\n",
+    "head.json": "{\"commitDigest\":\"4b886cdd5b4f9f2526a10624e3a99ff381aa611d73a595992a77d24a43e7dfe2\",\"digest\":\"5f3699170dec4f896dfe4d53910a535f091053ef438416b003e4e1fbec633802\",\"revision\":1,\"roleId\":\"role-00000000-0000-4000-8000-000000000000\"}\n",
+    "commits/000000000001.json": "{\"data\":{\"core\":\"dbee30e851c950bfd92da4d8cc7e0d1e105dcdb4a425e44981c1a524d24458c9\",\"settings\":\"e1addf7e7a5acbd87b4aa078dc4bfc9eb0718bdc3fc27c1ebe2733970a18b947\"},\"digest\":\"6683ad5c99334b5ded7c520ff57c0cdc8ceeba7660cef25f266b875038796d9c\",\"fingerprint\":\"fc15b4cc5a066eb58660fa796b14225d940af0359241bda10bc9ebb46b8b380c\",\"kind\":\"create\",\"operationId\":\"golden-create\",\"prev\":null,\"revision\":1,\"roleId\":\"role-00000000-0000-4000-8000-000000000000\"}\n",
+    "blobs/dbee30e851c950bfd92da4d8cc7e0d1e105dcdb4a425e44981c1a524d24458c9.json": "{\"text\":\"角色\\n\"}\n",
+    "blobs/e1addf7e7a5acbd87b4aa078dc4bfc9eb0718bdc3fc27c1ebe2733970a18b947.json": "{\"inputLimitBytes\":32768}\n"
+  }
+}

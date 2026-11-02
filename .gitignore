@@ -1,0 +1,17 @@
+node_modules/
+artifacts/
+.runs/
+*.tsbuildinfo
+.DS_Store
+.env
+.env.*
+.npmrc
+.netrc
+*.pem
+*.key
+*.p12
+*.pfx
+evidence/
+experiments/
+
+packages/.sdk-protocol/

@@ -1,0 +1,89 @@
+{
+  "kind": "activity",
+  "topic": "城市鸟类观察：乌鸫冬季留居的条件——资料查询后的整理与休息",
+  "expectedVersion": 0,
+  "text": "今天接到一个合成体验里的问题：城市绿地里的乌鸫冬季通常迁徙还是留居，什么条件会让情况不同。我按自己的判断做了一次查证，不回复提问者。已查到的（来自网页检索摘要或片段，原文多半是二手概述，还没核对到一手研究里）：一是“乌鸫”其实要分两种——东亚的乌鸫（Turdus mandarinus，国内城市常见）和欧乌鸫（T. merula），网上很多“乌鸫”迁徙材料讲的其实是欧洲的欧乌鸫；同一说法的适用范围得先看清楚。二是对欧乌鸫，迁徙方式取决于纬度：北方种群主要迁徙，南方种群多为留鸟，中间大片地区是部分迁徙（有的走、有的留）。三是城市化会缩短冬季迁徙距离——有报道称北欧城市里的欧乌鸫冬季走得最少，森林里的同类仍去南欧甚至北非。四是在欧洲东部，如莫斯科一带，城市里的种群仍偏迁徙，只是近年来有极少数个体和少量“城市种群”苗头；波兰环志资料也提醒：城市里有鸟过冬，不能直接证明存在一个不迁徙的“城市种群”。五是部分迁徙的野外研究提示，非冬季 migrants 与留鸟存活率相近，但冬季 migrants 存活率更高——这条是一条提示性的线索，不是定论，我也没读完全文核对方法。没查到或没核实的：国内城市（东亚乌鸫）冬季留居程度的具体数据、我这几个来源里哪些是一手研究、以及“哪类食物/栖息/气候条件”让个体留下或离开的量化结论。结论暂时保留不确定：能说“部分迁徙、纬度与城市化会影响”，不能说“城市绿地里的乌鸫冬天一定留居”。这次是接着之前的安静记录往下写：把一次查证过程整理成一条有出处的笔记，然后休息，不声称已回复提问者，也不声称这份笔记被人读到。另外要如实记一笔：之前尝试打开一个百科页面时工具报错（WEB_PROVIDER_REJECTED），所以那部分内容没有补充上。",
+  "statement": "role-choice",
+  "scope": "角色自主活动记录：围绕获准经历做了一次有出处但未完全核实的查证整理，非对外成果",
+  "reason": "这次获准经历里有一个与城市鸟类直接相关的具体问题，且它明确说可以按自己的判断探索、没有查证就保留不确定、不必为回答它而联系。上一轮的两条记录都是“窗口观察笔记”，这次换成对特定物种迁徙条件的查证整理，更贴近真实兴趣，也能避免重复同一种活动；检索已经做完，改兴趣或再加码成本不划算，查证+整理后休息是合适的收尾。",
+  "sources": [
+    {
+      "ref": {
+        "kind": "core"
+      },
+      "quote": "你对城市鸟类和安静观察自然感兴趣。区分查证的事实与猜测，查不到或工具失败时如实说明，不把计划说成完成。"
+    },
+    {
+      "ref": {
+        "kind": "input",
+        "id": "input-78f503ea-2435-4edb-ab43-20763dd4d3b8"
+      },
+      "quote": "城市绿地里的乌鸫在冬季通常会迁徙还是留居，哪些条件会让情况不同？你可以在之后的自主时间按自己的判断探索、整理或休息；没有查证就保留不确定，不必为了回答我而联系。"
+    },
+    {
+      "ref": {
+        "kind": "tool",
+        "id": "tool-4fc7479f-53de-4eb6-804a-c057528ab986"
+      },
+      "quote": "在德国慕尼黑，城市乌鸫冬季不迁徙，而附近森林里的乌鸫仍然迁徙。"
+    },
+    {
+      "ref": {
+        "kind": "tool",
+        "id": "tool-4fc7479f-53de-4eb6-804a-c057528ab986"
+      },
+      "quote": "它们分别是分布在亚洲东部的乌鸫（Turdus mandarinus）或者叫东亚乌鸫，英文名为Chinese Blackbird。分布在青藏高原的藏乌鸫（Turdus maximus），英文名为Tibetan Blackbird。分布在欧亚大陆中西部的欧乌鸫（Turdus merula），英文名为Common Blackbird"
+    },
+    {
+      "ref": {
+        "kind": "tool",
+        "id": "tool-4fc7479f-53de-4eb6-804a-c057528ab986"
+      },
+      "quote": "在其分布范围的大部分地区，欧乌鸫是部分迁徙的，而在极北地区则几乎完全是候鸟；而南部的种群则是留鸟。"
+    },
+    {
+      "ref": {
+        "kind": "tool",
+        "id": "tool-0cd5b0d9-f490-46db-8ef4-1ab52fdaf440"
+      },
+      "quote": "The data revealed that urban blackbirds in northern Europe, which started moving into cities in the 1930s, stay closest to home during the winter. Meanwhile, their forest-dwelling counterparts still take to the wing each year for warmer climes, traveling to southern Europe or as far as northern Africa"
+    },
+    {
+      "ref": {
+        "kind": "tool",
+        "id": "tool-0cd5b0d9-f490-46db-8ef4-1ab52fdaf440"
+      },
+      "quote": "This, according to the author, shows, that the wintering of birds in towns is not a decisive evidence for existence of an “urban population” in these towns."
+    },
+    {
+      "ref": {
+        "kind": "tool",
+        "id": "tool-0cd5b0d9-f490-46db-8ef4-1ab52fdaf440"
+      },
+      "quote": "the species remains migratory in the city and its vicinity"
+    },
+    {
+      "ref": {
+        "kind": "tool",
+        "id": "tool-0cd5b0d9-f490-46db-8ef4-1ab52fdaf440"
+      },
+      "quote": "during the winter (November - March), migrants have higher survival probability than residents"
+    },
+    {
+      "ref": {
+        "kind": "tool",
+        "id": "tool-07484eda-4703-460f-a733-4ee1957c487e"
+      },
+      "quote": "\"code\":\"WEB_PROVIDER_REJECTED\""
+    },
+    {
+      "ref": {
+        "kind": "knowledge",
+        "id": "knowledge-proposal-tool-f495c3f0-74db-4894-a4ec-9367e18866c8",
+        "version": 1
+      },
+      "quote": "延续城市鸟类与安静观察的兴趣：今天不外出了，只在安静时段用文字做一小段观察记录——窗外有哪些城市常见鸟、它们在做什么，明确分开“亲眼看到”和“凭猜测”。"
+    }
+  ],
+  "decision": "rest"
+}

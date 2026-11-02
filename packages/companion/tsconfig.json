@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "types": [
+      "node",
+      "react"
+    ],
+    "paths": {
+      "@deepseek-ai/dsh-typert-protocol": [
+        "../.sdk-protocol/src/index.ts"
+      ]
+    }
+  },
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx"
+  ],
+  "exclude": [
+    "src/client"
+  ]
+}

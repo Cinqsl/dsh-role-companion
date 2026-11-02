@@ -1,0 +1,13 @@
+{
+  "extends": "./packages/companion/tsconfig.json",
+  "files": [],
+  "include": [],
+  "references": [
+    {
+      "path": "packages/companion/tsconfig.json"
+    },
+    {
+      "path": "packages/.sdk-protocol/tsconfig.json"
+    }
+  ]
+}

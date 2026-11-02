@@ -1,0 +1,30 @@
+import './network-guard.mjs';
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {WebSocketServer} from 'ws';
+import {once} from 'node:events';
+import {mkdtemp,rm,access} from 'node:fs/promises';
+import {join} from 'node:path';
+import {tmpdir} from 'node:os';
+import {createRoleHome} from 'dsh-role-companion/home';
+import {startRole} from 'dsh-role-companion/runtime';
+import * as companion from 'dsh-role-companion';
+import {qqEvidence} from './qq-evidence.mjs';
+const wait=async predicate=>{for(let n=0;n<500;n++){const value=await predicate();if(value)return value;await new Promise(resolve=>setTimeout(resolve,10));}throw Error('Controlled OneBot result did not settle');};
+
+test('真实OneBot WS先核验版本账号好友，再由同Role持久接纳并去重，Home释放后关闭协议',{timeout:20000},async t=>{
+  const root=await mkdtemp(join(tmpdir(),'dsh-qq-wire38-')),server=new WebSocketServer({host:'127.0.0.1',port:0});
+  let home,role,adapter,socket;const requests=[],headers=[],order=[];
+  t.after(async()=>{role?.lifetime.requestStop('unload');if(role)await role.lifetime.stopped;else await home?.close();for(const client of server.clients)client.terminate();await new Promise(resolve=>server.close(resolve));await rm(root,{recursive:true,force:true});});
+  await once(server,'listening');server.on('connection',(client,request)=>{socket=client;headers.push(request.headers.authorization);client.on('message',bytes=>{const request=JSON.parse(bytes.toString());requests.push(request);const data=request.action==='get_version_info'?{app_name:'SnowLuma',app_version:'2.0.3-node',protocol_version:'v11'}:request.action==='get_login_info'?{user_id:10001,nickname:'合成账号'}:[{user_id:20002,nickname:'合成好友',remark:''}];client.send(JSON.stringify({status:'ok',retcode:0,data,echo:request.echo}));});});
+  home=await createRoleHome(join(root,'role'),{operationId:'wire-create',core:'合成角色',settings:{inputLimitBytes:32768}});
+  await home.applyOwner({kind:'bind-qq',operationId:'wire-bind',connectionId:'connection-synthetic',accountId:'10001',peerId:'20002',expectedBindingVersion:0,expectedRevision:home.revision});
+  adapter=companion.createQQReceiveAdapter({configuration:()=>({enabled:true,connectionId:'connection-synthetic',endpoint:`ws://127.0.0.1:${server.address().port}`,credentialRef:'SYNTHETIC_QQ',maxFrameBytes:1048576,readTimeoutMs:1000,reconnectInitialMs:1000,reconnectMaxMs:60000,jitterRatio:0.2}),binding:async()=>(await home.readSnapshot()).qqBinding??null,resolveCredential:async()=>'synthetic-qq-key-one',receive:input=>role.runtime.receive(input)});
+  role=await startRole(home,{inbound:{seal:()=>adapter.seal(),drain:()=>adapter.drain(),dispose:async()=>{await assert.rejects(access(join(root,'role/writer.lock')),error=>error.code==='ENOENT');order.push('protocol-dispose-after-home');await adapter.dispose();}}});adapter.start();
+  await wait(()=>adapter.inspect().phase==='ready');assert.deepEqual(requests.map(request=>request.action),['get_version_info','get_login_info','get_friend_list']);assert.deepEqual(headers,['Bearer synthetic-qq-key-one']);
+  const message={post_type:'message',message_type:'private',sub_type:'friend',self_id:10001,user_id:20002,sender:{user_id:20002},message_id:-7,message:[{type:'text',data:{text:' 来自QQ🙂\n'}}]};
+  socket.send(JSON.stringify(message));await wait(async()=>(await home.readSnapshot()).inputs.length===1);socket.send(JSON.stringify(message));await wait(()=>adapter.inspect().counts.duplicate===1);
+  const snapshot=await home.readSnapshot();assert.equal(snapshot.inputs[0].text,' 来自QQ🙂\n');assert.equal(snapshot.inputs[0].processingUnavailableReason,'qq-replies-unavailable');assert.equal((await home.readConversation()).turns.length,0);assert.equal(adapter.inspect().counts.accepted,1);assert(!JSON.stringify(adapter.inspect()).includes('synthetic-qq-key-one'));
+  role.lifetime.requestStop('owner-stop');await role.lifetime.stopped;assert.deepEqual(order,['protocol-dispose-after-home']);assert.equal(adapter.inspect().phase,'closed');
+  await qqEvidence('38-onebot-first-wire',{status:'passed',roleId:home.roleId,revision:snapshot.revision,input:snapshot.inputs[0],requests,headerMatches:headers.map(value=>value==='Bearer synthetic-qq-key-one'),order,view:adapter.inspect(),roleStopped:true});
+});

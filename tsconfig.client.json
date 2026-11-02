@@ -1,0 +1,1 @@
+{"extends": "./packages/companion/tsconfig.json", "files": [], "include": [], "references": [{"path": "packages/companion/tsconfig.client.json"}]}

@@ -1,0 +1,72 @@
+import assert from 'node:assert/strict';
+import {join} from 'node:path';
+import {writeFile} from 'node:fs/promises';
+import {createRoleHome,openRoleHome,restoreRoleBackup,qqInputIdentity} from 'dsh-role-companion/home';
+import {startRole,createNodeClock} from 'dsh-role-companion/runtime';
+/** The accepted target keeps inherited queued/unknown/rest/window facts and never replays them. */
+const run=process.env.DSH_TEST_RUN,source=join(run,'source'),backup=join(run,'backup'),destination=join(run,'target');
+const full='恢复后保留的完整旧回复🙂'.repeat(120);
+const record={case:'55-accepted-target-inherited-state-matrix',status:'recorded',fullAcceptanceCasesPassed:[],realBusinessCalls:{model:0,web:0,qq:0},sourceModels:0,sourceSends:0,targetModels:0,targetSends:0};
+let sourceRole,targetRole,previewRole,failure;
+async function wait(read,check){for(let i=0;i<1200;i++){const value=await read();if(check(value))return value;await new Promise(r=>setTimeout(r,10));}assert.fail('inherited state matrix did not settle');}
+const stop=async role=>{if(!role)return;role.lifetime.requestStop('unload');let timer;try{await Promise.race([role.lifetime.stopped,new Promise((_,reject)=>timer=setTimeout(()=>reject(Error('INHERITED_STATE_STOP_TIMEOUT')),5000))]);}finally{clearTimeout(timer);}};
+try{
+ const before='2026-03-09T03:59:59.000Z';
+ const home=await createRoleHome(source,{operationId:'state-source55',core:'目标激活保留旧状态，不重放旧栈。',settings:{inputLimitBytes:32768}});record.roleId=home.roleId;
+ const clock=createNodeClock(()=>new Date(before));
+ const initial=await home.readAutonomy();
+ await home.applyOwner({kind:'edit-autonomy-rules',operationId:'state-zone55',value:{...initial.rules.value,timeZone:'America/New_York'},expectedAutonomyRulesVersion:1,expectedRevision:home.revision});
+ await home.applyOwner({kind:'bind-qq',operationId:'state-bind55',connectionId:'connection-state55',accountId:'10009',peerId:'20009',expectedBindingVersion:0,expectedRevision:home.revision});
+ const binding=(await home.readSnapshot()).qqBinding;record.binding=binding;
+ // A window with real usage in the source autonomy state.
+ const reading=clock.read(),stamp={snapshotVersion:1,clock:reading,day:clock.day(reading.utc,'America/New_York'),rulesVersion:2};
+ await home.requestWake({operationId:'state-wake55',reason:'source',stamp});
+ const autonomous=await home.beginAutonomous({operationId:'state-begin55',runId:'inherited-run-55',expectedRevision:home.revision,now:reading.utc,stamp});
+ await home.reserveAttempt({operationId:'state-reserve55',attemptId:'state-autonomous-model',runId:autonomous.runId,source:'autonomous',kind:'model',autonomy:stamp,contextGeneration:autonomous.contextGeneration,settingsVersion:autonomous.settingsVersion,expectedRevision:home.revision,now:reading.utc});
+ await home.recordAttempt({operationId:'state-record55',attemptId:'state-autonomous-model',outcome:{kind:'not-dispatched',code:'CONTROLLED_NO_EFFECT'}});
+ await home.suspendAutonomous({operationId:'state-suspend55',runId:autonomous.runId,reason:'USER_PRIORITY'});
+ sourceRole=await startRole(home,{clock,execution:{inspect:async()=>({available:true,reason:'controlled-public-execution-port'}),prepare:async outputLimit=>({provider:'deepseek-official',model:'deepseek-flash',contextWindow:131072,outputLimit}),async run(_plan,scope){const permit=await scope.reserveModel({source:'user'});await permit.enter();record.sourceModels++;for await(const _ of permit.iterate(async function*(){yield '';})){}await permit.settle({kind:'completed'});return {kind:'reply',text:full};},quiesce:async()=>({idle:true,flushed:true}),close:async()=>{}},delivery:{canSend:()=>true,async send(prepared){record.sourceSends++;await prepared.invoke(async()=>{});return {kind:'unknown',code:'CONTROLLED_SEND_UNKNOWN'};}}});
+ const qqSource={connectionId:binding.connectionId,accountId:binding.accountId,peerId:binding.peerId,direction:'incoming',messageId:'-7701'};
+ record.firstInput=await sourceRole.runtime.receive({...qqInputIdentity(binding,qqSource),bindingId:binding.bindingId,bindingVersion:binding.version,channel:'qq',qqSource,text:'产生旧未知发件的QQ输入。',origin:'live',receivedAt:before,sourceEvidence:'verified-onebot-friend-text'});
+ record.sourceConversation=await wait(()=>sourceRole.owner.readConversation(),state=>state.deliveries.some(delivery=>delivery.status==='unknown')&&state.turns.filter(turn=>turn.source==='user').length===1&&state.turns.filter(turn=>turn.source==='user')[0].status==='finished');
+ record.inheritedDelivery=record.sourceConversation.deliveries[0];
+ record.inheritedAutonomy=await sourceRole.owner.readAutonomy();
+ assert.equal(record.inheritedDelivery.status,'unknown');
+ assert.equal(record.sourceModels,1);assert.equal(record.sourceSends,1);
+ assert.equal(record.inheritedAutonomy.windows.length,1,'the source window is real');
+ assert.equal(record.inheritedAutonomy.windows[0].used.model,1);
+ record.preHandoverRevision=(await sourceRole.owner.readConversation()).revision;
+ const handoverRevision=(await sourceRole.owner.readConversation()).revision;
+ record.handoverRequest=await sourceRole.owner.requestHandover({operationId:'state-outgoing55',destination:backup,expectedRevision:handoverRevision});
+ record.handover=await wait(()=>sourceRole.owner.readHandover('state-outgoing55'),value=>value.phase==='verified');
+ await sourceRole.lifetime.stopped;sourceRole=undefined;
+ const stoppedSource=await openRoleHome(source,{expectedRoleId:home.roleId});
+ record.sourceSnapshot=await stoppedSource.readSnapshot();record.sourceAutonomy=await stoppedSource.readAutonomy();await stoppedSource.close();
+ record.copy=await restoreRoleBackup({operationId:'state-copy55',backupPath:backup,destination,expectedRoleId:home.roleId,expectedManifestDigest:record.handover.backup.manifestDigest});
+ assert.equal(record.copy.phase,'awaiting-handover');
+ const copied=await openRoleHome(destination,{expectedRoleId:home.roleId});previewRole=await startRole(copied,{});
+ record.copiedConversation=await previewRole.owner.readConversation();record.copiedAutonomy=await previewRole.owner.readAutonomy();
+ record.acceptance=await previewRole.owner.confirmRestore({operationId:'state-confirm55',restoreOperationId:'state-copy55',handoverId:record.handover.record.handoverId,expectedManifestDigest:record.copy.manifestDigest,expectedRevision:copied.revision,currentSourceStoppedConfirmed:true});
+ await stop(previewRole);previewRole=undefined;
+ const targetHome=await openRoleHome(destination,{expectedRoleId:home.roleId});
+ targetRole=await startRole(targetHome,{clock:createNodeClock(()=>new Date('2026-03-09T04:30:00.000Z')),execution:{inspect:async()=>({available:true,reason:'controlled-public-execution-port'}),prepare:async outputLimit=>({provider:'deepseek-official',model:'deepseek-flash',contextWindow:131072,outputLimit}),async run(_plan,scope){const permit=await scope.reserveModel({source:'user'});await permit.enter();for await(const _ of permit.iterate(async function*(){record.targetModels++;yield '';})){}await permit.settle({kind:'completed'});return {kind:'reply',text:'新环境只处理明确的新输入。'};},quiesce:async()=>({idle:true,flushed:true}),close:async()=>{}},delivery:{canSend:()=>true,async send(prepared){record.targetSends++;await prepared.invoke(async()=>{});return {kind:'confirmed',messageId:'-9911'};}}});
+ record.ready=await wait(()=>targetRole.runtime.inspect(),view=>view.status==='ready');
+ assert.equal(record.targetModels,0);assert.equal(record.targetSends,0,'an accepted target must not replay inherited sends');
+ record.targetConversation=await targetRole.owner.readConversation();record.targetAutonomy=await targetRole.owner.readAutonomy();
+ assert.deepEqual(record.targetConversation.deliveries,record.copiedConversation.deliveries);
+ assert.deepEqual(record.targetConversation.sendAttempts,record.copiedConversation.sendAttempts);
+ assert.deepEqual({...record.targetAutonomy,revision:null},{...record.copiedAutonomy,revision:null});
+ assert.equal(record.targetConversation.deliveries[0].status,'unknown','inherited unknown stays unknown');
+ assert.equal(record.targetConversation.turns.filter(turn=>turn.status==='finished').length,record.copiedConversation.turns.filter(turn=>turn.status==='finished').length,'no inherited run is replayed');
+ record.newInput=await targetRole.runtime.receive({operationId:'state-new55',externalKey:'state-new55',bindingId:'panel-'+home.roleId,bindingVersion:1,text:'目标激活后明确的新输入。',origin:'live',receivedAt:new Date().toISOString(),sourceEvidence:'authenticated-owner-panel'});
+ record.after=await wait(()=>targetRole.owner.readConversation(),state=>state.replies.length===record.copiedConversation.replies.length+1);
+ assert.equal(record.targetModels,1);assert.equal(record.targetSends,0,'a new user input must not resend an inherited unknown');
+ record.afterAutonomy=await targetRole.owner.readAutonomy();
+ assert.deepEqual({...record.afterAutonomy,windows:null,revision:null},{...record.copiedAutonomy,windows:null,revision:null},'rest, activity and suspend facts survive later work');
+ assert.equal(record.after.sendAttempts.length,record.copiedConversation.sendAttempts.length,'no new send attempt appears');
+ assert.equal(record.after.deliveries.length,record.copiedConversation.deliveries.length);
+ assert.deepEqual(record.after.turns.filter(turn=>turn.status==='finished').length,record.copiedConversation.turns.filter(turn=>turn.status==='finished').length+1);
+ record.status='passed';
+}catch(error){failure=error;record.status='failed';record.error={name:error.name,message:error.message,code:error.code??null};}
+finally{for(const role of [targetRole,previewRole,sourceRole])await stop(role).catch(()=>{});try{const disk=await openRoleHome(destination,{expectedRoleId:record.roleId});record.diskConversation=await disk.readConversation();record.diskAutonomy=await disk.readAutonomy();record.diskDiagnostic=await disk.readActivationDiagnostic();await disk.close();}catch(error){record.diskError=error.code??error.message;}record.sourceModelsFinal=record.sourceModels;record.targetModelsFinal=record.targetModels;record.targetSendsFinal=record.targetSends;await writeFile(join(run,'inherited-state-result.json'),JSON.stringify(record,null,2).replaceAll(run,'<isolated-restore-home>')+'\n');}
+if(failure)throw failure;

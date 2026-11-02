@@ -1,0 +1,2 @@
+import {mkdir,writeFile} from 'node:fs/promises';import {join} from 'node:path';
+export async function saveReadRulesEvidence(name,value){if(!process.env.DSH_READ_RULES_EVIDENCE_DIRECTORY)return;await mkdir(process.env.DSH_READ_RULES_EVIDENCE_DIRECTORY,{recursive:true});await writeFile(join(process.env.DSH_READ_RULES_EVIDENCE_DIRECTORY,name+'.json'),JSON.stringify({case:name,status:'passed',realModelCalls:0,realCatalogCalls:0,webCalls:0,qqCalls:0,actualToolEntries:0,consumerEffect:'not-tested-in-owner-api-ui-slice',...value},null,2)+'\n');}

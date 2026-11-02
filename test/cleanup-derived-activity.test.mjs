@@ -1,0 +1,7 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {mkdtemp,realpath,readFile,writeFile} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join} from 'node:path';import {spawnSync} from 'node:child_process';
+for(const kind of ['activity','goal','growth'])for(const mode of ['retain','remove'])test('真实Native派生内容按origin撤销且保留正常更新与独立来源：'+kind+'/'+mode,{timeout:90000},async t=>{
+ const root=await mkdtemp(join(await realpath(tmpdir()),'dsh-cleanup-derived-activity-')),child=spawnSync(process.execPath,[new URL('./cleanup-derived-activity-worker.mjs',import.meta.url).pathname,mode,kind],{cwd:root,env:{PATH:process.env.PATH,HOME:join(root,'home'),DSH_HOME:join(root,'home'),TMPDIR:root,DSH_TEST_RUN:root,DSH_TELEMETRY_DISABLED:'1'},encoding:'utf8',timeout:75000});
+ let pidAbsent=false;try{process.kill(child.pid,0);}catch(error){if(error.code!=='ESRCH')throw error;pidAbsent=true;}
+ await writeFile(join(root,'process.json'),JSON.stringify({pid:child.pid,pidAbsent,exitCode:child.status,signal:child.signal,error:child.error?.message??null,stdout:child.stdout,stderr:child.stderr},null,2)+'\n');t.diagnostic('Independent synthetic Native fixture retained at '+root);
+ assert.equal(child.error,undefined,child.stderr);assert.equal(child.status,0,child.stderr);assert.equal(child.signal,null);assert(pidAbsent);const report=JSON.parse(await readFile(join(root,'derived-activity-cleanup.json')));assert.equal(report.status,'passed');assert.deepEqual(report.realBusinessCalls,{model:0,web:0,qq:0});assert(report.locksReleased);
+});
