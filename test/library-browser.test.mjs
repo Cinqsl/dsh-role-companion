@@ -24,7 +24,8 @@ async function openLibrary(page,origin) {
   const continueButton=page.getByRole('button',{name:'继续'});
   if(await continueButton.isVisible().catch(()=>false)) {
     await continueButton.click();
-    await page.waitForTimeout(1500);
+    await continueButton.waitFor({state:'hidden',timeout:30000});
+    await page.waitForTimeout(500);
   }
   await page.getByRole('button',{name:'账号菜单'}).click();
   await page.waitForTimeout(500);
