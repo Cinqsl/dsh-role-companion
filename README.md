@@ -39,3 +39,7 @@ npm test
 - 原始经历、知识版本、操作 ID、备份与恢复过程均有独立事实边界。
 
 项目术语见 [`GLOSSARY.md`](GLOSSARY.md)，代码审查约束见 [`CODING_STANDARDS.md`](CODING_STANDARDS.md)。
+
+## 许可证
+
+本项目依据 [MIT License](LICENSE) 授权。
